@@ -60,18 +60,8 @@
         </div>
     </div>
 
-    <!-- VENTANA FLOTANTE DE CHAT PRIVADO -->
-    <div id="private-chat-modal" style="display:none;">
-        <div class="private-header">
-            <span id="private-chat-title">Chat privado</span>
-            <button id="close-private-btn">✕</button>
-        </div>
-        <ul id="private-messages"></ul>
-        <form id="private-form">
-            <input id="private-input" autocomplete="off" placeholder="Mensaje privado..." />
-            <button type="submit">Enviar</button>
-        </form>
-    </div>
+    <!-- DOCK DE CHATS PRIVADOS: las conversaciones se van acoplando acá, ancladas abajo a la derecha -->
+    <div id="private-chat-dock"></div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
@@ -91,20 +81,15 @@
         const imageInput = document.getElementById('image-input');
         const attachBtn = document.getElementById('attach-btn');
 
-        // Elementos del chat privado
-        const privateModal = document.getElementById('private-chat-modal');
-        const privateTitle = document.getElementById('private-chat-title');
-        const privateMessagesList = document.getElementById('private-messages');
-        const privateForm = document.getElementById('private-form');
-        const privateInput = document.getElementById('private-input');
-        const closePrivateBtn = document.getElementById('close-private-btn');
+        // Dock de chats privados (se arman ventanas dinámicamente acá dentro)
+        const privateDock = document.getElementById('private-chat-dock');
 
         let miNombre = "";
         let miSala = "";
         let miId = null; // socket.id propio, para no poder chatear con uno mismo
 
-        // { socketId: { username, unread: number } } — conversaciones privadas abiertas
-        let conversacionActual = null; // socketId con el que estoy chateando ahora
+        // Mapa de conversaciones privadas abiertas: id del socket destino -> { username, unread, colapsado, elemento, mensajes[] }
+        const conversaciones = new Map();
 
         socket.on('connect', () => {
             miId = socket.id;
@@ -128,6 +113,26 @@
                 return `<a href="${texto}" target="_blank" rel="noopener" class="image-link">🖼️ Ver imagen (click para abrir)</a>`;
             }
             return escapeHTML(texto);
+        }
+
+        // Sonido de notificación sutil (sin archivos externos, generado con Web Audio API)
+        let audioCtx = null;
+        function reproducirSonidoNotificacion() {
+            try {
+                audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = 900;
+                gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.08, audioCtx.currentTime + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.22);
+                osc.connect(gain).connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.22);
+            } catch (err) {
+                // Si el navegador bloquea audio antes de una interacción del usuario, simplemente no suena
+            }
         }
 
         joinBtn.addEventListener('click', entrarASala);
@@ -217,64 +222,168 @@
         socket.on('room users', (users) => {
             usersList.innerHTML = ''; // Limpiar la lista anterior
             users.forEach(user => {
-                if (user.id === miId) return; // no me muestro a mí mismo en la lista clickeable... 
+                if (user.id === miId) return; // no me muestro a mí mismo en la lista clickeable...
                 // (si preferís verte listado también, sacá el "return" de arriba)
+                const conv = conversaciones.get(user.id);
+                const tieneNoLeidos = conv && conv.unread > 0;
+
                 const li = document.createElement('li');
                 li.classList.add('clickable-user');
                 li.dataset.id = user.id;
-                li.innerHTML = `🟢 <span>${escapeHTML(user.username)}</span>`;
+                li.innerHTML = `🟢 <span>${escapeHTML(user.username)}</span>
+                    <span class="unread-dot" style="display:${tieneNoLeidos ? 'inline-block' : 'none'}"></span>`;
                 li.addEventListener('click', () => abrirChatPrivado(user.id, user.username));
                 usersList.appendChild(li);
             });
         });
 
-        // ---- CHAT PRIVADO ----
+        // ---- CHAT PRIVADO (dock estilo Messenger, ventanas acopladas a la derecha) ----
 
-        function abrirChatPrivado(idDestino, nombreDestino) {
-            conversacionActual = idDestino;
-            privateTitle.textContent = `💬 ${nombreDestino}`;
-            privateModal.dataset.targetId = idDestino;
-            privateModal.dataset.targetName = nombreDestino;
-            privateModal.style.display = "flex";
-            privateInput.focus();
+        const esMobile = () => window.matchMedia('(max-width: 800px)').matches;
+
+        function actualizarPuntoNoLeido(id) {
+            const li = usersList.querySelector(`li[data-id="${id}"]`);
+            if (!li) return;
+            const conv = conversaciones.get(id);
+            const punto = li.querySelector('.unread-dot');
+            if (punto) punto.style.display = (conv && conv.unread > 0) ? 'inline-block' : 'none';
         }
 
-        closePrivateBtn.addEventListener('click', () => {
-            privateModal.style.display = "none";
-            conversacionActual = null;
-        });
+        function crearVentanaPrivada(id, username) {
+            const win = document.createElement('div');
+            win.className = 'private-chat-window';
+            win.dataset.id = id;
+            win.innerHTML = `
+                <div class="private-header">
+                    <span class="private-username">💬 ${escapeHTML(username)}</span>
+                    <span class="unread-badge" style="display:none">0</span>
+                    <button class="close-private-btn" title="Cerrar">✕</button>
+                </div>
+                <ul class="private-messages"></ul>
+                <form class="private-form">
+                    <input class="private-input" autocomplete="off" placeholder="Mensaje privado..." />
+                    <button type="submit">Enviar</button>
+                </form>
+            `;
 
-        privateForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const texto = privateInput.value.trim();
-            const destinoId = privateModal.dataset.targetId;
-            if (!texto || !destinoId) return;
-
-            socket.emit('private message', {
-                to: destinoId,
-                from: miNombre,
-                text: texto
+            // Click en el header colapsa/expande la ventanita (menos si tocan la X)
+            win.querySelector('.private-header').addEventListener('click', (e) => {
+                if (e.target.closest('.close-private-btn')) return;
+                toggleColapsarVentana(id);
             });
 
-            // Mostrar mi propio mensaje en la ventana (el server no me lo reenvía a mí)
-            agregarMensajePrivado(`Yo: ${contenidoMensaje(texto)}`, true);
-            privateInput.value = '';
-        });
+            win.querySelector('.close-private-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                cerrarChatPrivado(id);
+            });
+
+            win.querySelector('.private-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const inputEl = win.querySelector('.private-input');
+                const texto = inputEl.value.trim();
+                if (!texto) return;
+
+                socket.emit('private message', { to: id, from: miNombre, text: texto });
+                agregarMensajePrivado(id, `Yo: ${contenidoMensaje(texto)}`, true);
+                inputEl.value = '';
+            });
+
+            // En mobile solo mantenemos una ventana abierta a la vez para no saturar la pantalla
+            if (esMobile()) {
+                [...conversaciones.keys()].forEach(otroId => {
+                    if (otroId !== id) cerrarChatPrivado(otroId);
+                });
+            }
+
+            privateDock.appendChild(win);
+            return win;
+        }
+
+        function abrirChatPrivado(idDestino, nombreDestino) {
+            let conv = conversaciones.get(idDestino);
+
+            if (!conv) {
+                conv = { username: nombreDestino, unread: 0, colapsado: false, elemento: null };
+                conv.elemento = crearVentanaPrivada(idDestino, nombreDestino);
+                conversaciones.set(idDestino, conv);
+            } else {
+                // Ya existe: la desplegamos si estaba colapsada
+                conv.colapsado = false;
+                conv.elemento.classList.remove('collapsed');
+            }
+
+            // Al abrir, se marca como leído
+            conv.unread = 0;
+            actualizarBadge(idDestino);
+            actualizarPuntoNoLeido(idDestino);
+
+            conv.elemento.querySelector('.private-input').focus();
+        }
+
+        function toggleColapsarVentana(id) {
+            const conv = conversaciones.get(id);
+            if (!conv) return;
+            conv.colapsado = !conv.colapsado;
+            conv.elemento.classList.toggle('collapsed', conv.colapsado);
+            if (!conv.colapsado) {
+                conv.unread = 0;
+                actualizarBadge(id);
+                actualizarPuntoNoLeido(id);
+            }
+        }
+
+        function cerrarChatPrivado(id) {
+            const conv = conversaciones.get(id);
+            if (!conv) return;
+            conv.elemento.remove();
+            conversaciones.delete(id);
+            actualizarPuntoNoLeido(id);
+        }
+
+        function actualizarBadge(id) {
+            const conv = conversaciones.get(id);
+            if (!conv) return;
+            const badge = conv.elemento.querySelector('.unread-badge');
+            if (conv.unread > 0) {
+                badge.textContent = conv.unread;
+                badge.style.display = 'inline-flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
 
         socket.on('private message', (data) => {
-            // Si no tengo abierta la conversación con esa persona, la abro
-            if (conversacionActual !== data.fromId) {
-                abrirChatPrivado(data.fromId, data.from);
+            let conv = conversaciones.get(data.fromId);
+
+            // Si no existe la ventana, la creamos ya colapsada (no interrumpe lo que estás escribiendo)
+            if (!conv) {
+                const elemento = crearVentanaPrivada(data.fromId, data.from);
+                elemento.classList.add('collapsed');
+                conv = { username: data.from, unread: 0, colapsado: true, elemento };
+                conversaciones.set(data.fromId, conv);
             }
-            agregarMensajePrivado(`<strong>${escapeHTML(data.from)}:</strong> ${contenidoMensaje(data.text)}`, false);
+
+            agregarMensajePrivado(data.fromId, `<strong>${escapeHTML(data.from)}:</strong> ${contenidoMensaje(data.text)}`, false);
+
+            // Si la ventana está colapsada, sumamos al contador de no leídos
+            if (conv.colapsado) {
+                conv.unread++;
+                actualizarBadge(data.fromId);
+                actualizarPuntoNoLeido(data.fromId);
+            }
+
+            reproducirSonidoNotificacion();
         });
 
-        function agregarMensajePrivado(html, esMio) {
+        function agregarMensajePrivado(id, html, esMio) {
+            const conv = conversaciones.get(id);
+            if (!conv) return;
             const li = document.createElement('li');
             li.innerHTML = html;
             if (esMio) li.style.background = "var(--accent)";
-            privateMessagesList.appendChild(li);
-            privateMessagesList.scrollTop = privateMessagesList.scrollHeight;
+            const lista = conv.elemento.querySelector('.private-messages');
+            lista.appendChild(li);
+            lista.scrollTop = lista.scrollHeight;
         }
     </script>
 </body>

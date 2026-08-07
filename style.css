@@ -298,6 +298,11 @@ body {
     align-items: center;
     gap: 8px;
 }
+#users-list li span:first-of-type {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
 /* RESPONSIVO PARA CELULARES */
 @media (max-width: 800px) {
@@ -358,63 +363,113 @@ body {
         padding: 0 16px;
     }
 
-    /* En mobile, el chat privado ocupa casi toda la pantalla desde abajo */
-    #private-chat-modal {
-        left: 10px;
-        right: 10px;
-        bottom: 0;
-        width: auto;
-        height: 60vh;
-        height: 60dvh;
-        border-radius: 10px 10px 0 0;
+    /* En mobile, el dock de chats privados ocupa casi todo el ancho desde abajo */
+    #private-chat-dock {
+        right: 8px;
+        left: 8px;
+        justify-content: flex-end;
+    }
+    .private-chat-window {
+        width: 100%;
+        max-width: 340px;
+        height: 55vh;
+        height: 55dvh;
+    }
+    .private-chat-window.collapsed {
+        height: 44px;
     }
 }
-/* Ventana Flotante de Chat Privado */
-#private-chat-modal {
+/* DOCK DE CHATS PRIVADOS: ancla varias conversaciones abajo a la derecha, tipo Messenger */
+#private-chat-dock {
     position: fixed;
-    bottom: 20px;
-    right: 220px; /* Queda al lado de la barra de conectados */
-    width: 300px;
-    height: 380px;
+    bottom: 0;
+    right: 210px; /* deja lugar para la barra de conectados */
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: flex-end;
+    gap: 12px;
+    z-index: 1000;
+    pointer-events: none; /* el contenedor no bloquea clicks; cada ventana los reactiva */
+}
+
+.private-chat-window {
+    pointer-events: auto;
+    width: 250px;
+    height: 320px;
     background: var(--bg-container);
     border: 1px solid var(--accent);
-    border-radius: 10px;
+    border-bottom: none;
+    border-radius: 10px 10px 0 0;
     box-shadow: 0 4px 20px rgba(0,0,0,0.5);
     display: flex;
     flex-direction: column;
-    z-index: 1000;
     overflow: hidden;
+    transition: height 0.15s ease;
+}
+
+/* Estado colapsado: solo queda visible la barra de título */
+.private-chat-window.collapsed {
+    height: 44px;
+}
+.private-chat-window.collapsed .private-messages,
+.private-chat-window.collapsed .private-form {
+    display: none;
 }
 
 .private-header {
     background: var(--accent);
     color: white;
-    padding: 10px;
+    padding: 10px 12px;
     font-weight: bold;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 14px;
+    font-size: 13px;
+    cursor: pointer;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.private-username {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-grow: 1;
 }
 
-#close-private-btn {
+/* Contador de mensajes no leídos, visible en la barra de título cuando está colapsada */
+.unread-badge {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    background: #f04747;
+    color: white;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.close-private-btn {
     background: none;
     border: none;
     cursor: pointer;
     color: white;
-    font-size: 12px;
+    font-size: 13px;
+    flex-shrink: 0;
 }
 
-#private-messages {
+.private-messages {
     list-style: none;
-    padding: 15px;
+    padding: 12px;
     margin: 0;
     flex-grow: 1;
     overflow-y: auto;
     background: var(--bg-chat);
 }
 
-#private-messages li {
+.private-messages li {
     padding: 6px 10px;
     background: #3a3c4d;
     margin-bottom: 8px;
@@ -425,15 +480,17 @@ body {
     max-width: 90%;
 }
 
-#private-form {
+.private-form {
     display: flex;
     padding: 8px;
     background: var(--bg-container);
     border-top: 1px solid #3a3c4d;
+    flex-shrink: 0;
 }
 
-#private-input {
+.private-input {
     flex-grow: 1;
+    min-width: 0;
     border: 1px solid #3a3c4d;
     background: var(--bg-main);
     color: var(--text-main);
@@ -444,7 +501,7 @@ body {
     margin-right: 5px;
 }
 
-#private-form button {
+.private-form button {
     background: var(--accent);
     color: white;
     border: none;
@@ -452,6 +509,19 @@ body {
     border-radius: 15px;
     cursor: pointer;
     font-size: 12px;
+    flex-shrink: 0;
+}
+
+/* Lucecita de mensaje no leído junto al nombre en "Conectados" */
+.unread-dot {
+    display: none;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #f04747;
+    margin-left: auto;
+    flex-shrink: 0;
+    box-shadow: 0 0 4px #f04747;
 }
 
 .clickable-user:hover {

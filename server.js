@@ -9,7 +9,7 @@ app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
-// Ahora guarda el Nombre Y el ID de red de cada usuario
+// FUNCIÓN ACTUALIZADA: Envía el Nombre Y el ID de conexión para evitar el [object Object]
 function obtenerUsuariosEnSala(sala) {
     const usuarios = [];
     const clientes = io.sockets.adapter.rooms.get(sala);
@@ -39,6 +39,7 @@ io.on('connection', (socket) => {
             text: `➡️ ${data.username} ha entrado a la sala.`
         });
 
+        // Enviamos el paquete de datos estructurado como lo pide el nuevo index.html
         io.to(data.room).emit('room users', obtenerUsuariosEnSala(data.room));
     });
 
@@ -46,9 +47,8 @@ io.on('connection', (socket) => {
         io.to(data.room).emit('chat message', { username: data.username, text: data.text });
     });
 
-    // LÓGICA PARA MENSAJES PRIVADOS DIRECTOS
+    // LÓGICA DE REDIRECCIÓN PARA MENSAJES PRIVADOS
     socket.on('private message', (data) => {
-        // Envia el mensaje únicamente al socket de destino
         io.to(data.to).emit('private message', {
             from: data.from,
             fromId: socket.id,
@@ -68,7 +68,8 @@ io.on('connection', (socket) => {
     });
 });
 
+// Puerto dinámico compatible con Render
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {
-    console.log(`Servidor funcionando en el puerto: ${PORT}`);
+    console.log(`Servidor en funcionamiento en el puerto: ${PORT}`);
 });

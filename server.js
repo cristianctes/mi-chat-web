@@ -9,7 +9,7 @@ app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
-// FUNCIÓN ACTUALIZADA: Envía el Nombre Y el ID de conexión para evitar el [object Object]
+// Ahora guarda el Nombre Y el ID de red de cada usuario
 function obtenerUsuariosEnSala(sala) {
     const usuarios = [];
     const clientes = io.sockets.adapter.rooms.get(sala);
@@ -30,8 +30,12 @@ function obtenerUsuariosEnSala(sala) {
 io.on('connection', (socket) => {
     
     socket.on('join room', (data) => {
+        if (!data || !data.username || !data.room) return;
+        const nombreLimpio = String(data.username).trim().slice(0, 20);
+        if (!nombreLimpio) return;
+
         socket.join(data.room);
-        socket.username = data.username;
+        socket.username = nombreLimpio;
         socket.room = data.room;
 
         io.to(data.room).emit('chat message', {
@@ -39,16 +43,18 @@ io.on('connection', (socket) => {
             text: `➡️ ${data.username} ha entrado a la sala.`
         });
 
-        // Enviamos el paquete de datos estructurado como lo pide el nuevo index.html
         io.to(data.room).emit('room users', obtenerUsuariosEnSala(data.room));
     });
 
     socket.on('chat message', (data) => {
-        io.to(data.room).emit('chat message', { username: data.username, text: data.text });
+        if (!data || !data.room || !data.text || !String(data.text).trim()) return;
+        const textoLimpio = String(data.text).trim().slice(0, 500);
+        io.to(data.room).emit('chat message', { username: socket.username || data.username, text: textoLimpio });
     });
 
-    // LÓGICA DE REDIRECCIÓN PARA MENSAJES PRIVADOS
+    // LÓGICA PARA MENSAJES PRIVADOS DIRECTOS
     socket.on('private message', (data) => {
+        // Envia el mensaje únicamente al socket de destino
         io.to(data.to).emit('private message', {
             from: data.from,
             fromId: socket.id,
@@ -68,8 +74,7 @@ io.on('connection', (socket) => {
     });
 });
 
-// Puerto dinámico compatible con Render
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {
-    console.log(`Servidor en funcionamiento en el puerto: ${PORT}`);
+    console.log(`Servidor funcionando en el puerto: ${PORT}`);
 });

@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>Mi Chat Web</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -24,16 +24,19 @@
         <div class="chat-header">
             <span id="current-room-title">Sala</span>
         </div>
-        
+
         <!-- Contenedor principal que divide el chat de la barra lateral -->
         <div class="chat-main-area">
             <div class="chat-messages-area">
                 <ul id="messages"></ul>
                 <form id="form" action="">
-                    <input id="input" autocomplete="off" placeholder="Escribe un mensaje..." /><button>Enviar</button>
+                    <label id="attach-btn" for="image-input" title="Enviar imagen">📷</label>
+                    <input type="file" id="image-input" accept="image/*" style="display:none;">
+                    <input id="input" autocomplete="off" placeholder="Escribe un mensaje..." />
+                    <button type="submit">Enviar</button>
                 </form>
             </div>
-            
+
             <!-- BARRA LATERAL DE USUARIOS -->
             <div class="users-sidebar">
                 <h3>Conectados</h3>
@@ -46,22 +49,44 @@
     <script>
         const socket = io();
 
+        // ⚠️ Clave pública de imgbb (ver nota de seguridad en el chat)
+        const IMGBB_API_KEY = "4ccae6cd77f470c93290ba44d67d571f";
+
         const loginContainer = document.getElementById('login-container');
         const chatContainer = document.getElementById('chat-container');
         const usernameInput = document.getElementById('username');
         const roomSelect = document.getElementById('room');
         const joinBtn = document.getElementById('join-btn');
         const currentRoomTitle = document.getElementById('current-room-title');
-        
+
         const form = document.getElementById('form');
         const input = document.getElementById('input');
         const messages = document.getElementById('messages');
         const usersList = document.getElementById('users-list');
+        const imageInput = document.getElementById('image-input');
+        const attachBtn = document.getElementById('attach-btn');
 
         let miNombre = "";
         let miSala = "";
 
-        joinBtn.addEventListener('click', () => {
+        // Evita inyección de HTML en nombres/mensajes
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // Detecta si un texto es una URL de imagen (imgbb u otras)
+        function esUrlDeImagen(texto) {
+            return /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(texto.trim());
+        }
+
+        joinBtn.addEventListener('click', entrarASala);
+        usernameInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') entrarASala();
+        });
+
+        function entrarASala() {
             miNombre = usernameInput.value.trim();
             miSala = roomSelect.value;
 
@@ -75,13 +100,13 @@
             currentRoomTitle.textContent = `Sala: ${miSala}`;
 
             socket.emit('join room', { username: miNombre, room: miSala });
-        });
+        }
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (input.value) {
+            if (input.value.trim()) {
                 socket.emit('chat message', {
-                    text: input.value,
+                    text: input.value.trim(),
                     username: miNombre,
                     room: miSala
                 });
@@ -89,14 +114,57 @@
             }
         });
 
+        // Click en el ícono de cámara abre el selector de archivos
+        attachBtn.addEventListener('click', () => imageInput.click());
+
+        // Al elegir un archivo, se sube a imgbb y se envía la URL como mensaje
+        imageInput.addEventListener('change', async () => {
+            const file = imageInput.files[0];
+            if (!file) return;
+
+            attachBtn.textContent = "⏳";
+
+            try {
+                const formData = new FormData();
+                formData.append('image', file);
+
+                const res = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    const url = data.data.url;
+                    socket.emit('chat message', {
+                        text: url,
+                        username: miNombre,
+                        room: miSala
+                    });
+                } else {
+                    alert("No se pudo subir la imagen. Probá de nuevo.");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Error al subir la imagen.");
+            } finally {
+                attachBtn.textContent = "📷";
+                imageInput.value = '';
+            }
+        });
+
         socket.on('chat message', (data) => {
             const item = document.createElement('li');
             if (data.username === "Sistema") {
-                item.innerHTML = `<em>${data.text}</em>`;
-                item.style.backgroundColor = "#e4e4e4";
-                item.style.color = "#555";
+                item.innerHTML = `<em>${escapeHTML(data.text)}</em>`;
+                item.classList.add('system-message');
+            } else if (esUrlDeImagen(data.text)) {
+                item.innerHTML = `<strong>${escapeHTML(data.username)}:</strong><br>
+                    <a href="${data.text}" target="_blank" rel="noopener">
+                        <img src="${data.text}" class="chat-image" alt="imagen enviada">
+                    </a>`;
             } else {
-                item.innerHTML = `<strong>${data.username}:</strong> ${data.text}`;
+                item.innerHTML = `<strong>${escapeHTML(data.username)}:</strong> ${escapeHTML(data.text)}`;
             }
             messages.appendChild(item);
             messages.scrollTop = messages.scrollHeight;
@@ -107,7 +175,8 @@
             usersList.innerHTML = ''; // Limpiar la lista anterior
             users.forEach(user => {
                 const li = document.createElement('li');
-                li.textContent = `🟢 ${user}`;
+                // FIX: usar user.username, no el objeto completo
+                li.textContent = `🟢 ${user.username}`;
                 usersList.appendChild(li);
             });
         });

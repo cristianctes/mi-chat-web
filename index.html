@@ -55,7 +55,6 @@
 
                 <!-- FORMULARIO DE ENVÍO CON CARGA DE ARCHIVOS -->
                 <form id="form" action="">
-                    <!-- Botón de clip oculto estéticamente -->
                     <label for="file-input" class="file-label">📷</label>
                     <input type="file" id="file-input" accept="image/*" style="display: none;" />
                     
@@ -76,7 +75,6 @@
     <script>
         const socket = io();
 
-        // Elementos de interfaz
         const loginContainer = document.getElementById('login-container');
         const chatContainer = document.getElementById('chat-container');
         const usernameInput = document.getElementById('username');
@@ -101,7 +99,7 @@
         let targetUsername = "";
         let modoChat = "publico";
 
-        // CONFIGURACIÓN DE TU LLAVE DE IMGBB
+        // API KEY DE IMGBB ASIGNADA CORRECTAMENTE
         const IMGBB_API_KEY = "4ccae6cd77f470c93290ba44d67d571f"; 
 
         joinBtn.addEventListener('click', () => {
@@ -117,22 +115,18 @@
             socket.emit('join room', { username: miNombre, room: miSala });
         });
 
-        // SELECTOR DE CAMBIO DE SALA EN TIEMPO REAL
         changeRoomSelect.addEventListener('change', () => {
             const nuevaSala = changeRoomSelect.value;
             if (nuevaSala === miSala) return;
             
-            // Forzar regreso al canal público de la nueva sala
             irAlGeneral();
-
             miSala = nuevaSala;
             currentRoomTitle.textContent = miSala;
-            messages.innerHTML = ""; // Limpiar el feed de la sala anterior
+            messages.innerHTML = "";
 
             socket.emit('join room', { username: miNombre, room: miSala });
         });
 
-        // SISTEMA AUTOMÁTICO DE SUBIDA DE IMÁGENES
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -144,7 +138,6 @@
             formData.append("image", file);
 
             try {
-                // Enviamos la foto a ImgBB en segundo plano
                 const response = await fetch(`https://imgbb.com{IMGBB_API_KEY}`, {
                     method: "POST",
                     body: formData
@@ -154,7 +147,6 @@
                 if (resultado.success) {
                     const linkDeLaFoto = resultado.data.url;
                     
-                    // Enviamos el link generado automáticamente al chat público o privado
                     if (modoChat === "publico") {
                         socket.emit('chat message', { text: linkDeLaFoto, username: miNombre, room: miSala });
                     } else {
@@ -171,9 +163,9 @@
                 alert("Error de conexión al subir el archivo.");
             }
 
-            input.placeholder = modoChat === "publico" ? "Escribe un mensaje..." : `Escribe un privado a ${targetUsername}...`;
+            input.placeholder = modoChat === "publico" ? "Escribe un mensaje..." : `Escribe a ${targetUsername}...`;
             input.disabled = false;
-            fileInput.value = ""; // Resetear selector
+            fileInput.value = "";
         });
 
         form.addEventListener('submit', (e) => {
@@ -194,7 +186,6 @@
             input.value = '';
         });
 
-        // Detectar si el texto recibido es un enlace web para volverlo clickeable
         function formatearMensaje(texto) {
             if (texto.startsWith("http://") || texto.startsWith("https://")) {
                 return `<a href="${texto}" target="_blank" class="chat-link">🔗 ${texto}</a>`;
@@ -227,3 +218,13 @@
                 if (user.id === targetSocketId) li.classList.add('active-private-user');
 
                 li.addEventListener('click', () => {
+                    document.querySelectorAll('#users-list li').forEach(el => el.classList.remove('active-private-user'));
+                    targetSocketId = user.id;
+                    targetUsername = user.username;
+                    li.classList.add('active-private-user');
+
+                    modoChat = "privado";
+                    currentRoomTitle.textContent = `Privado: ${targetUsername}`;
+                    changeRoomSelect.style.display = "none";
+                    backToPublicBtn.style.display = "inline-block";
+                    messages.style.display = "none";

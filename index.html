@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Chat Web</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- PANTALLA DE INGRESO -->
+    <div id="login-container">
+        <h2>Ingresar al Chat</h2>
+        <input type="text" id="username" placeholder="Tu Apodo / Nickname" autocomplete="off">
+        <select id="room">
+            <option value="Chaco-Corrientes">Chaco-Corrientes</option>
+            <option value="Buenos Aires">Buenos Aires</option>
+            <option value="Sala General">Sala General</option>
+        </select>
+        <button id="join-btn">Entrar a la Sala</button>
+    </div>
+
+    <!-- PANTALLA DEL CHAT -->
+    <div class="chat-container" id="chat-container" style="display: none;">
+        <div class="chat-header">
+            <span id="current-room-title">Sala</span>
+        </div>
+        
+        <!-- Contenedor principal de tres columnas -->
+        <div class="chat-main-area">
+            
+            <!-- BARRA LATERAL IZQUIERDA: PUBLICIDAD -->
+            <div class="ads-sidebar">
+                <span class="ad-label">PUBLICIDAD</span>
+                <div class="ad-box">
+                    <p>¡Tu Anuncio Aquí!</p>
+                    <small>Contacto: tu-email@chat.com</small>
+                </div>
+                <div class="ad-box">
+                    <p>Espacio Disponible</p>
+                </div>
+            </div>
+
+            <!-- COLUMNA CENTRAL: CHAT -->
+            <div class="chat-messages-area">
+                <ul id="messages"></ul>
+                <form id="form" action="">
+                    <input id="input" autocomplete="off" placeholder="Escribe un mensaje..." /><button>Enviar</button>
+                </form>
+            </div>
+            
+            <!-- BARRA LATERAL DERECHA: USUARIOS -->
+            <div class="users-sidebar">
+                <h3>Conectados</h3>
+                <ul id="users-list"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        const loginContainer = document.getElementById('login-container');
+        const chatContainer = document.getElementById('chat-container');
+        const usernameInput = document.getElementById('username');
+        const roomSelect = document.getElementById('room');
+        const joinBtn = document.getElementById('join-btn');
+        const currentRoomTitle = document.getElementById('current-room-title');
+        
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+        const messages = document.getElementById('messages');
+        const usersList = document.getElementById('users-list');
+
+        let miNombre = "";
+        let miSala = "";
+
+        joinBtn.addEventListener('click', () => {
+            miNombre = usernameInput.value.trim();
+            miSala = roomSelect.value;
+
+            if (miNombre === "") {
+                alert("Por favor, ingresá un nombre.");
+                return;
+            }
+
+            loginContainer.style.display = "none";
+            chatContainer.style.display = "flex";
+            currentRoomTitle.textContent = `Sala: ${miSala}`;
+
+            socket.emit('join room', { username: miNombre, room: miSala });
+        });
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (input.value) {
+                socket.emit('chat message', {
+                    text: input.value,
+                    username: miNombre,
+                    room: miSala
+                });
+                input.value = '';
+            }
+        });
+
+        socket.on('chat message', (data) => {
+            const item = document.createElement('li');
+            if (data.username === "Sistema") {
+                item.innerHTML = `<em>${data.text}</em>`;
+                item.style.backgroundColor = "#e4e4e4";
+                item.style.color = "#555";
+            } else {
+                item.innerHTML = `<strong>${data.username}:</strong> ${data.text}`;
+            }
+            messages.appendChild(item);
+            messages.scrollTop = messages.scrollHeight;
+        });
+
+        socket.on('room users', (users) => {
+            usersList.innerHTML = '';
+            users.forEach(user => {
+                const li = document.createElement('li');
+                li.textContent = `🟢 ${user}`;
+                usersList.appendChild(li);
+            });
+        });
+    </script>
+</body>
+</html>

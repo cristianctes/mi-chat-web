@@ -1,12 +1,55 @@
 const express = require('express');
+const multer = require('multer');
 const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
+
+// La clave de imgbb vive SOLO en el servidor (variable de entorno), nunca en el navegador
+const IMGBB_API_KEY = process.env.IMGBB_API_KEY;
+
+// Guarda el archivo subido en memoria (no en disco) para reenviarlo a imgbb
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 } // 5 MB máximo por imagen
+});
 
 app.use(express.static(__dirname));
 
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
+});
+
+// RUTA PROXY: el navegador manda la imagen acá, el server la reenvía a imgbb con la key oculta
+app.post('/upload', upload.single('image'), async (req, res) => {
+    try {
+        if (!IMGBB_API_KEY) {
+            return res.status(500).json({ success: false, error: 'Falta configurar IMGBB_API_KEY en el servidor.' });
+        }
+        if (!req.file) {
+            return res.status(400).json({ success: false, error: 'No se recibió ninguna imagen.' });
+        }
+
+        const base64Imagen = req.file.buffer.toString('base64');
+
+        const formData = new FormData();
+        formData.append('key', IMGBB_API_KEY);
+        formData.append('image', base64Imagen);
+
+        const respuestaImgbb = await fetch('https://api.imgbb.com/1/upload', {
+            method: 'POST',
+            body: formData
+        });
+        const datos = await respuestaImgbb.json();
+
+        if (!datos.success) {
+            return res.status(502).json({ success: false, error: 'imgbb rechazó la imagen.' });
+        }
+
+        res.json({ success: true, url: datos.data.url });
+    } catch (err) {
+        console.error('Error subiendo imagen:', err);
+        res.status(500).json({ success: false, error: 'Error interno subiendo la imagen.' });
+    }
 });
 
 // Ahora guarda el Nombre Y el ID de red de cada usuario
@@ -54,11 +97,13 @@ io.on('connection', (socket) => {
 
     // LÓGICA PARA MENSAJES PRIVADOS DIRECTOS
     socket.on('private message', (data) => {
+        if (!data || !data.to || !data.text || !String(data.text).trim()) return;
+        const textoLimpio = String(data.text).trim().slice(0, 500);
         // Envia el mensaje únicamente al socket de destino
         io.to(data.to).emit('private message', {
-            from: data.from,
+            from: socket.username || data.from,
             fromId: socket.id,
-            text: data.text
+            text: textoLimpio
         });
     });
 

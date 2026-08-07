@@ -242,7 +242,8 @@
                 const li = document.createElement('li');
                 li.classList.add('clickable-user');
                 li.dataset.id = user.id;
-                li.innerHTML = `🟢 <span>${escapeHTML(user.username)}</span><span class="unread-dot" style="display:${tieneNoLeidos ? 'inline-block' : 'none'}"></span>`;
+                const cantidadNoLeidos = tieneNoLeidos ? conv.unread : 0;
+                li.innerHTML = `🟢 <span class="connected-username">${escapeHTML(user.username)}</span><span class="unread-label" style="display:${cantidadNoLeidos > 0 ? 'inline-flex' : 'none'}">${cantidadNoLeidos} msj sin leer</span>`;
                 li.addEventListener('click', () => abrirChatPrivado(user.id, user.username));
                 usersList.appendChild(li);
 
@@ -259,8 +260,18 @@
             const li = usersList.querySelector(`li[data-id="${id}"]`);
             if (!li) return;
             const conv = conversaciones.get(id);
-            const punto = li.querySelector('.unread-dot');
-            if (punto) punto.style.display = (conv && conv.unread > 0) ? 'inline-block' : 'none';
+            const label = li.querySelector('.unread-label');
+            if (!label) return;
+
+            const cantidad = conv ? conv.unread : 0;
+            if (cantidad > 0) {
+                label.textContent = `${cantidad} ${cantidad === 1 ? 'msj' : 'msjs'} sin leer`;
+                label.style.display = 'inline-flex';
+                li.classList.add('has-unread');
+            } else {
+                label.style.display = 'none';
+                li.classList.remove('has-unread');
+            }
         }
 
         function crearVentanaPrivada(id, username) {

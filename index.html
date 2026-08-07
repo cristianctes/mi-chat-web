@@ -11,7 +11,7 @@
     <div id="login-container">
         <h2>Ingresar al Chat</h2>
         <input type="text" id="username" placeholder="Tu Apodo / Nickname" autocomplete="off">
-        <select id="room">
+        <select id="room-select-login">
             <option value="Chaco-Corrientes">Chaco-Corrientes</option>
             <option value="Buenos Aires">Buenos Aires</option>
             <option value="Sala General">Sala General</option>
@@ -21,10 +21,21 @@
 
     <!-- PANTALLA DEL CHAT -->
     <div class="chat-container" id="chat-container" style="display: none;">
-        <!-- Encabezado dinámico con botón para volver al chat público -->
-        <div class="chat-header">
-            <span id="current-room-title">Sala</span>
-            <button id="back-to-public-btn" style="display: none;">Volver al Chat Público</button>
+        
+        <!-- BARRA SUPERIOR CON SELECTOR DE SALAS -->
+        <div class="chat-navbar">
+            <div class="nav-left">
+                <span id="current-room-title">Sala</span>
+                <select id="change-room-select">
+                    <option value="Chaco-Corrientes">Cambiar a: Chaco-Corrientes</option>
+                    <option value="Buenos Aires">Cambiar a: Buenos Aires</option>
+                    <option value="Sala General">Cambiar a: Sala General</option>
+                </select>
+            </div>
+            <div class="nav-right">
+                <button id="back-to-public-btn" style="display: none;">Volver al General</button>
+                <button id="toggle-users-btn">☰ Conectados</button>
+            </div>
         </div>
         
         <div class="chat-main-area">
@@ -33,27 +44,28 @@
                 <span class="ad-label">PUBLICIDAD</span>
                 <div class="ad-box">
                     <p>¡Tu Anuncio Aquí!</p>
-                    <small>Contacto: tu-email@chat.com</small>
+                    <small>tu-email@chat.com</small>
                 </div>
             </div>
 
             <!-- ÁREA DE MENSAJES CENTRAL -->
             <div class="chat-messages-area">
-                <!-- Contenedor del Chat Público -->
                 <ul id="messages"></ul>
-
-                <!-- Contenedor del Chat Privado (Oculto al inicio) -->
                 <ul id="private-messages" style="display: none;"></ul>
 
-                <!-- Formulario Único de Envío -->
+                <!-- FORMULARIO DE ENVÍO CON CARGA DE ARCHIVOS -->
                 <form id="form" action="">
+                    <!-- Botón de clip oculto estéticamente -->
+                    <label for="file-input" class="file-label">📷</label>
+                    <input type="file" id="file-input" accept="image/*" style="display: none;" />
+                    
                     <input id="input" autocomplete="off" placeholder="Escribe un mensaje..." />
                     <button id="send-btn">Enviar</button>
                 </form>
             </div>
             
             <!-- BARRA LATERAL: USUARIOS -->
-            <div class="users-sidebar">
+            <div class="users-sidebar" id="users-sidebar">
                 <h3>Conectados</h3>
                 <ul id="users-list"></ul>
             </div>
@@ -64,37 +76,106 @@
     <script>
         const socket = io();
 
+        // Elementos de interfaz
         const loginContainer = document.getElementById('login-container');
         const chatContainer = document.getElementById('chat-container');
         const usernameInput = document.getElementById('username');
-        const roomSelect = document.getElementById('room');
+        const roomSelectLogin = document.getElementById('room-select-login');
+        const changeRoomSelect = document.getElementById('change-room-select');
         const joinBtn = document.getElementById('join-btn');
         const currentRoomTitle = document.getElementById('current-room-title');
         const backToPublicBtn = document.getElementById('back-to-public-btn');
+        const toggleUsersBtn = document.getElementById('toggle-users-btn');
+        const usersSidebar = document.getElementById('users-sidebar');
         
         const form = document.getElementById('form');
         const input = document.getElementById('input');
+        const fileInput = document.getElementById('file-input');
         const messages = document.getElementById('messages');
         const privateMessages = document.getElementById('private-messages');
         const usersList = document.getElementById('users-list');
 
         let miNombre = "";
         let miSala = "";
-        let targetSocketId = ""; // ID del usuario privado actual
-        let targetUsername = ""; // Nombre del usuario privado actual
-        let modoChat = "publico"; // Puede ser "publico" o "privado"
+        let targetSocketId = "";
+        let targetUsername = "";
+        let modoChat = "publico";
+
+        // CONFIGURACIÓN DE TU LLAVE DE IMGBB
+        const IMGBB_API_KEY = "4ccae6cd77f470c93290ba44d67d571f"; 
 
         joinBtn.addEventListener('click', () => {
             miNombre = usernameInput.value.trim();
-            miSala = roomSelect.value;
+            miSala = roomSelectLogin.value;
             if (miNombre === "") return alert("Ingresa un nombre.");
+            
             loginContainer.style.display = "none";
             chatContainer.style.display = "flex";
-            currentRoomTitle.textContent = `Sala: ${miSala}`;
+            currentRoomTitle.textContent = miSala;
+            changeRoomSelect.value = miSala;
+
             socket.emit('join room', { username: miNombre, room: miSala });
         });
 
-        // MANEJO DEL ENVÍO DE MENSAJES (Detecta si es público o privado)
+        // SELECTOR DE CAMBIO DE SALA EN TIEMPO REAL
+        changeRoomSelect.addEventListener('change', () => {
+            const nuevaSala = changeRoomSelect.value;
+            if (nuevaSala === miSala) return;
+            
+            // Forzar regreso al canal público de la nueva sala
+            irAlGeneral();
+
+            miSala = nuevaSala;
+            currentRoomTitle.textContent = miSala;
+            messages.innerHTML = ""; // Limpiar el feed de la sala anterior
+
+            socket.emit('join room', { username: miNombre, room: miSala });
+        });
+
+        // SISTEMA AUTOMÁTICO DE SUBIDA DE IMÁGENES
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            input.placeholder = "Subiendo imagen y generando link...";
+            input.disabled = true;
+
+            const formData = new FormData();
+            formData.append("image", file);
+
+            try {
+                // Enviamos la foto a ImgBB en segundo plano
+                const response = await fetch(`https://imgbb.com{IMGBB_API_KEY}`, {
+                    method: "POST",
+                    body: formData
+                });
+                const resultado = await response.json();
+                
+                if (resultado.success) {
+                    const linkDeLaFoto = resultado.data.url;
+                    
+                    // Enviamos el link generado automáticamente al chat público o privado
+                    if (modoChat === "publico") {
+                        socket.emit('chat message', { text: linkDeLaFoto, username: miNombre, room: miSala });
+                    } else {
+                        socket.emit('private message', { to: targetSocketId, text: linkDeLaFoto, from: miNombre });
+                        const item = document.createElement('li');
+                        item.innerHTML = `<strong>Yo (Privado):</strong> <a href="${linkDeLaFoto}" target="_blank" class="chat-link">📷 Ver Foto Compartida</a>`;
+                        privateMessages.appendChild(item);
+                        privateMessages.scrollTop = privateMessages.scrollHeight;
+                    }
+                } else {
+                    alert("Error al procesar la imagen.");
+                }
+            } catch (err) {
+                alert("Error de conexión al subir el archivo.");
+            }
+
+            input.placeholder = modoChat === "publico" ? "Escribe un mensaje..." : `Escribe un privado a ${targetUsername}...`;
+            input.disabled = false;
+            fileInput.value = ""; // Resetear selector
+        });
+
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             if (!input.value) return;
@@ -105,9 +186,7 @@
                 const texto = input.value;
                 socket.emit('private message', { to: targetSocketId, text: texto, from: miNombre });
                 
-                // Agregarlo visualmente a mi pantalla de chat privado
                 const item = document.createElement('li');
-                item.className = "my-private-msg";
                 item.innerHTML = `<strong>Yo (Privado):</strong> ${texto}`;
                 privateMessages.appendChild(item);
                 privateMessages.scrollTop = privateMessages.scrollHeight;
@@ -115,7 +194,14 @@
             input.value = '';
         });
 
-        // RECIBIR MENSAJES PÚBLICOS
+        // Detectar si el texto recibido es un enlace web para volverlo clickeable
+        function formatearMensaje(texto) {
+            if (texto.startsWith("http://") || texto.startsWith("https://")) {
+                return `<a href="${texto}" target="_blank" class="chat-link">🔗 ${texto}</a>`;
+            }
+            return texto;
+        }
+
         socket.on('chat message', (data) => {
             const item = document.createElement('li');
             if (data.username === "Sistema") {
@@ -123,13 +209,12 @@
                 item.style.backgroundColor = "#2a2b36";
                 item.style.color = "#a0a5b5";
             } else {
-                item.innerHTML = `<strong>${data.username}:</strong> ${data.text}`;
+                item.innerHTML = `<strong>${data.username}:</strong> ${formatearMensaje(data.text)}`;
             }
             messages.appendChild(item);
             if (modoChat === "publico") messages.scrollTop = messages.scrollHeight;
         });
 
-        // RECIBIR LA LISTA DE USUARIOS
         socket.on('room users', (users) => {
             usersList.innerHTML = '';
             users.forEach(user => {
@@ -139,82 +224,6 @@
                 li.setAttribute('data-id', user.id);
                 li.innerHTML = `🟢 <span class="clickable-user">${user.username}</span>`;
                 
-                // Si ya estábamos hablando con él, mantenemos el color de activo
-                if (user.id === targetSocketId) {
-                    li.classList.add('active-private-user');
-                }
+                if (user.id === targetSocketId) li.classList.add('active-private-user');
 
-                // Evento al hacer clic en un usuario para hablar en privado
                 li.addEventListener('click', () => {
-                    // Remover color activo de cualquier otro usuario previo
-                    document.querySelectorAll('#users-list li').forEach(el => el.classList.remove('active-private-user'));
-                    
-                    // Asignar datos del nuevo objetivo privado
-                    targetSocketId = user.id;
-                    targetUsername = user.username;
-                    li.classList.add('active-private-user');
-
-                    // Cambiar la vista de la columna central
-                    modoChat = "privado";
-                    currentRoomTitle.textContent = `Conversación Privada con: ${targetUsername}`;
-                    backToPublicBtn.style.display = "inline-block";
-                    messages.style.display = "none";
-                    privateMessages.style.display = "block";
-                    input.placeholder = `Escribe un mensaje privado a ${targetUsername}...`;
-                    privateMessages.innerHTML = ""; // Limpiar pantalla para iniciar conversación limpia
-                });
-
-                usersList.appendChild(li);
-            });
-        });
-
-        // RECIBIR MENSAJE PRIVADO ENTRANTE
-        socket.on('private message', (data) => {
-            // Si no estamos en modo privado con esa persona, lo cambiamos automáticamente
-            if (targetSocketId !== data.fromId) {
-                targetSocketId = data.fromId;
-                targetUsername = data.from;
-                
-                // Resaltar visualmente en la lista de la derecha
-                document.querySelectorAll('#users-list li').forEach(el => {
-                    if (el.getAttribute('data-id') === data.fromId) {
-                        el.classList.add('active-private-user');
-                    } else {
-                        el.classList.remove('active-private-user');
-                    }
-                });
-
-                modoChat = "privado";
-                currentRoomTitle.textContent = `Conversación Privada con: ${targetUsername}`;
-                backToPublicBtn.style.display = "inline-block";
-                messages.style.display = "none";
-                privateMessages.style.display = "block";
-                input.placeholder = `Escribe un mensaje privado a ${targetUsername}...`;
-                privateMessages.innerHTML = "";
-            }
-
-            // Dibujar el mensaje recibido
-            const item = document.createElement('li');
-            item.className = "incoming-private-msg";
-            item.innerHTML = `<strong>${data.from} (Privado):</strong> ${data.text}`;
-            privateMessages.appendChild(item);
-            privateMessages.scrollTop = privateMessages.scrollHeight;
-        });
-
-        // BOTÓN PARA VOLVER AL CHAT DE LA SALA PÚBLICA
-        backToPublicBtn.addEventListener('click', () => {
-            document.querySelectorAll('#users-list li').forEach(el => el.classList.remove('active-private-user'));
-            modoChat = "publico";
-            targetSocketId = "";
-            targetUsername = "";
-            
-            currentRoomTitle.textContent = `Sala: ${miSala}`;
-            backToPublicBtn.style.display = "none";
-            privateMessages.style.display = "none";
-            messages.style.display = "block";
-            input.placeholder = "Escribe un mensaje...";
-            messages.scrollTop = messages.scrollHeight;
-        });
-    </script>
-</body>
-</html>

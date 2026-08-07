@@ -249,3 +249,92 @@ body {
         max-width: 85%;
     }
 }
+/* Ventana Flotante de Chat Privado */
+#private-chat-modal {
+    position: fixed;
+    bottom: 20px;
+    right: 220px; /* Queda al lado de la barra de conectados */
+    width: 300px;
+    height: 380px;
+    background: var(--bg-container);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.private-header {
+    background: var(--accent);
+    color: white;
+    padding: 10px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+}
+
+#close-private-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: white;
+    font-size: 12px;
+}
+
+#private-messages {
+    list-style: none;
+    padding: 15px;
+    margin: 0;
+    flex-grow: 1;
+    overflow-y: auto;
+    background: var(--bg-chat);
+}
+
+#private-messages li {
+    padding: 6px 10px;
+    background: #3a3c4d;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    color: var(--text-main);
+    font-size: 13px;
+    word-wrap: break-word;
+    max-width: 90%;
+}
+
+#private-form {
+    display: flex;
+    padding: 8px;
+    background: var(--bg-container);
+    border-top: 1px solid #3a3c4d;
+}
+
+#private-input {
+    flex-grow: 1;
+    border: 1px solid #3a3c4d;
+    background: var(--bg-main);
+    color: var(--text-main);
+    padding: 6px 10px;
+    border-radius: 15px;
+    outline: none;
+    font-size: 13px;
+    margin-right: 5px;
+}
+
+#private-form button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 5px 12px;
+    border-radius: 15px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.clickable-user:hover {
+    text-decoration: underline;
+    color: var(--accent);
+}

@@ -25,22 +25,17 @@
             <span id="current-room-title">Sala</span>
         </div>
         
-        <!-- Contenedor principal de tres columnas -->
         <div class="chat-main-area">
-            
-            <!-- BARRA LATERAL IZQUIERDA: PUBLICIDAD -->
+            <!-- PUBLICIDAD -->
             <div class="ads-sidebar">
                 <span class="ad-label">PUBLICIDAD</span>
                 <div class="ad-box">
                     <p>¡Tu Anuncio Aquí!</p>
                     <small>Contacto: tu-email@chat.com</small>
                 </div>
-                <div class="ad-box">
-                    <p>Espacio Disponible</p>
-                </div>
             </div>
 
-            <!-- COLUMNA CENTRAL: CHAT -->
+            <!-- CHAT PÚBLICO -->
             <div class="chat-messages-area">
                 <ul id="messages"></ul>
                 <form id="form" action="">
@@ -48,12 +43,25 @@
                 </form>
             </div>
             
-            <!-- BARRA LATERAL DERECHA: USUARIOS -->
+            <!-- USUARIOS -->
             <div class="users-sidebar">
                 <h3>Conectados</h3>
                 <ul id="users-list"></ul>
             </div>
         </div>
+    </div>
+
+    <!-- VENTANA DE CHAT PRIVADO (Flotante) -->
+    <div id="private-chat-modal" style="display: none;">
+        <div class="private-header">
+            <span id="private-target-name">Chat Privado</span>
+            <button id="close-private-btn">❌</button>
+        </div>
+        <ul id="private-messages"></ul>
+        <form id="private-form">
+            <input id="private-input" autocomplete="off" placeholder="Escribe un privado..." />
+            <button>Enviar</button>
+        </form>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -72,33 +80,32 @@
         const messages = document.getElementById('messages');
         const usersList = document.getElementById('users-list');
 
+        // Elementos Privados
+        const privateModal = document.getElementById('private-chat-modal');
+        const privateTargetName = document.getElementById('private-target-name');
+        const closePrivateBtn = document.getElementById('close-private-btn');
+        const privateForm = document.getElementById('private-form');
+        const privateInput = document.getElementById('private-input');
+        const privateMessages = document.getElementById('private-messages');
+
         let miNombre = "";
         let miSala = "";
+        let targetSocketId = ""; // ID de la persona con la que hablo en privado
 
         joinBtn.addEventListener('click', () => {
             miNombre = usernameInput.value.trim();
             miSala = roomSelect.value;
-
-            if (miNombre === "") {
-                alert("Por favor, ingresá un nombre.");
-                return;
-            }
-
+            if (miNombre === "") return alert("Ingresa un nombre.");
             loginContainer.style.display = "none";
             chatContainer.style.display = "flex";
             currentRoomTitle.textContent = `Sala: ${miSala}`;
-
             socket.emit('join room', { username: miNombre, room: miSala });
         });
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             if (input.value) {
-                socket.emit('chat message', {
-                    text: input.value,
-                    username: miNombre,
-                    room: miSala
-                });
+                socket.emit('chat message', { text: input.value, username: miNombre, room: miSala });
                 input.value = '';
             }
         });
@@ -107,8 +114,8 @@
             const item = document.createElement('li');
             if (data.username === "Sistema") {
                 item.innerHTML = `<em>${data.text}</em>`;
-                item.style.backgroundColor = "#e4e4e4";
-                item.style.color = "#555";
+                item.style.backgroundColor = "#2a2b36";
+                item.style.color = "#a0a5b5";
             } else {
                 item.innerHTML = `<strong>${data.username}:</strong> ${data.text}`;
             }
@@ -116,13 +123,60 @@
             messages.scrollTop = messages.scrollHeight;
         });
 
+        // RECIBIR LISTA CON IDs PARA HACER CLIC
         socket.on('room users', (users) => {
             usersList.innerHTML = '';
             users.forEach(user => {
+                // No permitir hacer clic en uno mismo
+                if (user.username === miNombre) return;
+
                 const li = document.createElement('li');
-                li.textContent = `🟢 ${user}`;
+                li.innerHTML = `🟢 <span class="clickable-user">${user.username}</span>`;
+                li.style.cursor = "pointer";
+                
+                // Al hacer clic, abrimos la ventana privada
+                li.addEventListener('click', () => {
+                    targetSocketId = user.id;
+                    privateTargetName.textContent = `Privado con: ${user.username}`;
+                    privateMessages.innerHTML = ""; // Limpiar historial viejo
+                    privateModal.style.display = "flex";
+                });
                 usersList.appendChild(li);
             });
+        });
+
+        // ENVIAR MENSAJE PRIVADO
+        privateForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (privateInput.value && targetSocketId) {
+                const texto = privateInput.value;
+                // Enviar al servidor especificando a quién va dirigido
+                socket.emit('private message', { to: targetSocketId, text: texto, from: miNombre });
+                
+                // Dibujarlo en mi propia ventana
+                const item = document.createElement('li');
+                item.innerHTML = `<strong>Yo:</strong> ${texto}`;
+                privateMessages.appendChild(item);
+                privateInput.value = '';
+                privateMessages.scrollTop = privateMessages.scrollHeight;
+            }
+        });
+
+        // RECIBIR MENSAJE PRIVADO DE ALGUIEN
+        socket.on('private message', (data) => {
+            // Guardamos el ID de quien nos habla por si queremos responderle
+            targetSocketId = data.fromId;
+            privateTargetName.textContent = `Privado con: ${data.from}`;
+            privateModal.style.display = "flex";
+
+            const item = document.createElement('li');
+            item.innerHTML = `<strong>${data.from}:</strong> ${data.text}`;
+            privateMessages.appendChild(item);
+            privateMessages.scrollTop = privateMessages.scrollHeight;
+        });
+
+        closePrivateBtn.addEventListener('click', () => {
+            privateModal.style.display = "none";
         });
     </script>
 </body>

@@ -1,4 +1,3 @@
-
 ```css
 :root {
     --bg-main: #1e1e24;
@@ -47,7 +46,6 @@ body {
     display: flex; flex-direction: column; background: var(--bg-container);
 }
 
-/* NUEVA BARRA SUPERIOR ADAPTATIVA */
 .chat-navbar {
     background: var(--bg-container);
     padding: 12px 20px;
@@ -71,7 +69,7 @@ body {
 }
 #toggle-users-btn {
     background: var(--bg-main); color: var(--text-main); border: 1px solid #3a3c4d;
-    padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; display: none; /* Solo se verá en celular */
+    padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; display: none;
 }
 
 .chat-main-area { display: flex; flex-grow: 1; overflow: hidden; position: relative; }
@@ -82,16 +80,14 @@ body {
 
 .chat-messages-area { flex-grow: 1; display: flex; flex-direction: column; background-color: var(--bg-chat); }
 #messages, #private-messages { list-style-type: none; margin: 0; padding: 20px; flex-grow: 1; overflow-y: auto; }
-#messages li, #private-messages li { padding: 10px 14px; background: var(--bg-bubble); margin-bottom: 10px; border-radius: 8px; max-width: 75%; word-wrap: break-word; border: 1px solid #3a3c4d; }
+#messages li, #private-messages li { padding: 10px 14px; background: var(--bg-bubble); margin-bottom: 10px; border-radius: 8px; max-width: 75%; word-wrap: break-word; border: 1px solid #3a3c4d; color: var(--text-main); }
 #private-messages li { background: var(--private-bubble); border-color: #5c3f75; }
 
-/* Estilo de los Enlaces del Chat */
 .chat-link { color: #58a6ff; text-decoration: none; font-weight: 500; }
 .chat-link:hover { text-decoration: underline; }
 
 #form { background: var(--bg-container); padding: 12px; display: flex; align-items: center; border-top: 1px solid #3a3c4d; }
 
-/* Botón de la cámara multimedia */
 .file-label {
     font-size: 20px; cursor: pointer; margin-right: 12px; padding: 5px;
     background: var(--bg-main); border-radius: 5px; border: 1px solid #3a3c4d;
@@ -100,27 +96,24 @@ body {
 #input { border: 1px solid #3a3c4d; padding: 10px 15px; flex-grow: 1; border-radius: 20px; margin-right: 12px; outline: none; background: var(--bg-main); color: var(--text-main); font-size: 14px; }
 #form button { background: var(--accent); color: white; border: none; padding: 0 20px; height: 38px; border-radius: 20px; cursor: pointer; font-weight: bold; }
 
-/* BARRA DE USUARIOS FIJA EN ESCRITORIO */
 .users-sidebar {
     width: 190px; background: var(--bg-container); border-left: 1px solid #3a3c4d;
     padding: 20px; display: flex; flex-direction: column;
 }
 .users-sidebar h3 { margin-top: 0; font-size: 13px; text-transform: uppercase; color: var(--text-muted); border-bottom: 1px solid #3a3c4d; padding-bottom: 8px; }
 #users-list { list-style: none; padding: 0; margin: 0; overflow-y: auto; }
-#users-list li { padding: 10px 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; border-radius: 6px; cursor: pointer; }
+#users-list li { padding: 10px 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; border-radius: 6px; cursor: pointer; color: var(--text-main); }
 #users-list li:hover { background: #343644; }
 #users-list li.active-private-user { background: var(--accent) !important; color: white; font-weight: bold; }
 
-/* DISEÑO RESPONSIVE EXCLUSIVO PARA MÓVILES */
 @media (max-width: 800px) {
     .ads-sidebar { display: none; }
-    #toggle-users-btn { display: inline-block; } /* Mostrar botón de menú */
+    #toggle-users-btn { display: inline-block; }
     
-    /* Transformar la lista de usuarios en un panel lateral oculto deslizable */
     .users-sidebar {
         position: absolute;
         top: 0;
-        right: -240px; /* Escondido a la derecha */
+        right: -240px;
         width: 200px;
         height: 100%;
         z-index: 99;
@@ -129,9 +122,8 @@ body {
         box-shadow: -4px 0 15px rgba(0,0,0,0.5);
     }
     
-    /* Clase que se activa al pulsar el botón */
     .users-sidebar.open {
-        right: 0; /* Aparece en pantalla flotando al costado */
+        right: 0;
     }
     
     #messages li, #private-messages li { max-width: 85%; }

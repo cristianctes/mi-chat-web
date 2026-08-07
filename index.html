@@ -46,7 +46,7 @@
                 <ul id="messages"></ul>
                 <form id="form" action="">
                     <label id="attach-btn" for="image-input" title="Enviar imagen">📷</label>
-                    <input type="file" id="image-input" accept="image/*" style="display:none;">
+                    <input type="file" id="image-input" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;">
                     <input id="input" autocomplete="off" placeholder="Escribe un mensaje..." />
                     <button type="submit">Enviar</button>
                 </form>
@@ -73,49 +73,70 @@
         const roomSelect = document.getElementById('room');
         const joinBtn = document.getElementById('join-btn');
         const currentRoomTitle = document.getElementById('current-room-title');
-
         const form = document.getElementById('form');
         const input = document.getElementById('input');
         const messages = document.getElementById('messages');
         const usersList = document.getElementById('users-list');
         const imageInput = document.getElementById('image-input');
         const attachBtn = document.getElementById('attach-btn');
-
-        // Dock de chats privados (se arman ventanas dinámicamente acá dentro)
         const privateDock = document.getElementById('private-chat-dock');
 
-        let miNombre = "";
-        let miSala = "";
-        let miId = null; // socket.id propio, para no poder chatear con uno mismo
+        let miNombre = '';
+        let miSala = '';
+        let miId = null;
+        let baneado = false;
 
-        // Mapa de conversaciones privadas abiertas: id del socket destino -> { username, unread, colapsado, elemento, mensajes[] }
+        // id socket destino -> { username, unread, colapsado, elemento, online }
         const conversaciones = new Map();
 
         socket.on('connect', () => {
             miId = socket.id;
         });
 
-        // Evita inyección de HTML en nombres/mensajes
         function escapeHTML(str) {
             const div = document.createElement('div');
-            div.textContent = str;
+            div.textContent = String(str ?? '');
             return div.innerHTML;
         }
 
-        // Detecta si un texto es una URL de imagen (imgbb u otras)
         function esUrlDeImagen(texto) {
-            return /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(texto.trim());
+            return /^https?:\/\/\S+\.(png|jpe?g|gif|webp)(\?\S*)?$/i.test(String(texto).trim());
         }
 
-        // Arma el HTML de un mensaje: si es imagen, se muestra SOLO como link (no se auto-embebe)
         function contenidoMensaje(texto) {
             if (esUrlDeImagen(texto)) {
-                return `<a href="${texto}" target="_blank" rel="noopener" class="image-link">🖼️ Ver imagen (click para abrir)</a>`;
+                return `<a href="${escapeHTML(texto)}" target="_blank" rel="noopener" class="image-link">🖼️ Ver imagen (click para abrir)</a>`;
             }
             return escapeHTML(texto);
         }
 
-        // Sonido de notificación sutil (sin archivos externos, generado con Web Audio API)
+        // Genera un color estable por nick para distinguir rápidamente quién escribe.
+        function colorDeNick(nick) {
+            let hash = 0;
+            for (let i = 0; i < nick.length; i++) {
+                hash = nick.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const hue = Math.abs(hash) % 360;
+            return `hsl(${hue} 78% 68%)`;
+        }
+
+        function archivoImagenValido(file) {
+            const tipos = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+            return file && tipos.includes(file.type) && file.size <= 5 * 1024 * 1024;
+        }
+
+        async function subirImagen(file) {
+            if (!archivoImagenValido(file)) {
+                throw new Error('Solo podés enviar imágenes JPG, PNG, GIF o WEBP de hasta 5 MB.');
+            }
+            const formData = new FormData();
+            formData.append('image', file);
+            const res = await fetch('/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'No se pudo subir la imagen.');
+            return data.url;
+        }
+
         let audioCtx = null;
         function reproducirSonidoNotificacion() {
             try {
@@ -130,9 +151,7 @@
                 osc.connect(gain).connect(audioCtx.destination);
                 osc.start();
                 osc.stop(audioCtx.currentTime + 0.22);
-            } catch (err) {
-                // Si el navegador bloquea audio antes de una interacción del usuario, simplemente no suena
-            }
+            } catch (err) {}
         }
 
         joinBtn.addEventListener('click', entrarASala);
@@ -141,103 +160,98 @@
         });
 
         function entrarASala() {
+            if (baneado) return;
             miNombre = usernameInput.value.trim();
             miSala = roomSelect.value;
-
-            if (miNombre === "") {
-                alert("Por favor, ingresá un nombre.");
+            if (!miNombre) {
+                alert('Por favor, ingresá un nombre.');
                 return;
             }
-
-            loginContainer.style.display = "none";
-            chatContainer.style.display = "flex";
+            loginContainer.style.display = 'none';
+            chatContainer.style.display = 'flex';
             currentRoomTitle.textContent = `Sala: ${miSala}`;
-
             socket.emit('join room', { username: miNombre, room: miSala });
         }
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (input.value.trim()) {
-                socket.emit('chat message', {
-                    text: input.value.trim(),
-                    username: miNombre,
-                    room: miSala
-                });
-                input.value = '';
-            }
+            const texto = input.value.trim();
+            if (!texto || baneado) return;
+            socket.emit('chat message', { text: texto, room: miSala });
+            input.value = '';
         });
 
-        // Click en el ícono de cámara abre el selector de archivos
         attachBtn.addEventListener('click', () => imageInput.click());
-
-        // Al elegir un archivo, se sube vía el servidor propio (/upload) y se envía SOLO el link
         imageInput.addEventListener('change', async () => {
             const file = imageInput.files[0];
-            if (!file) return;
-
-            attachBtn.textContent = "⏳";
-
+            if (!file || baneado) return;
+            attachBtn.textContent = '⏳';
             try {
-                const formData = new FormData();
-                formData.append('image', file);
-
-                const res = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                const data = await res.json();
-
-                if (data.success) {
-                    socket.emit('chat message', {
-                        text: data.url,
-                        username: miNombre,
-                        room: miSala
-                    });
-                } else {
-                    alert(data.error || "No se pudo subir la imagen. Probá de nuevo.");
-                }
+                const url = await subirImagen(file);
+                socket.emit('chat message', { text: url, room: miSala });
             } catch (err) {
-                console.error(err);
-                alert("Error al subir la imagen.");
+                alert(err.message);
             } finally {
-                attachBtn.textContent = "📷";
+                attachBtn.textContent = '📷';
                 imageInput.value = '';
             }
         });
 
         socket.on('chat message', (data) => {
             const item = document.createElement('li');
-            if (data.username === "Sistema") {
-                item.innerHTML = `<em>${escapeHTML(data.text)}</em>`;
+
+            if (data.username === 'Sistema') {
+                const em = document.createElement('em');
+                em.textContent = data.text;
+                item.appendChild(em);
                 item.classList.add('system-message');
             } else {
-                item.innerHTML = `<strong>${escapeHTML(data.username)}:</strong> ${contenidoMensaje(data.text)}`;
+                const nick = document.createElement('button');
+                nick.type = 'button';
+                nick.className = 'message-nick';
+                nick.textContent = `${data.username}:`;
+                nick.style.color = colorDeNick(data.username);
+
+                if (data.userId && data.userId !== miId) {
+                    nick.title = `Enviar mensaje privado a ${data.username}`;
+                    nick.addEventListener('click', () => abrirChatPrivado(data.userId, data.username));
+                } else {
+                    nick.classList.add('my-nick');
+                }
+
+                const contenido = document.createElement('span');
+                contenido.className = 'message-text';
+                contenido.innerHTML = contenidoMensaje(data.text);
+
+                item.appendChild(nick);
+                item.appendChild(document.createTextNode(' '));
+                item.appendChild(contenido);
             }
+
             messages.appendChild(item);
             messages.scrollTop = messages.scrollHeight;
         });
 
-        // ESCUCHAR LA LISTA ACTUALIZADA DE USUARIOS EN LA SALA
         socket.on('room users', (users) => {
-            usersList.innerHTML = ''; // Limpiar la lista anterior
+            usersList.innerHTML = '';
             users.forEach(user => {
-                if (user.id === miId) return; // no me muestro a mí mismo en la lista clickeable...
-                // (si preferís verte listado también, sacá el "return" de arriba)
+                if (user.id === miId) return;
                 const conv = conversaciones.get(user.id);
                 const tieneNoLeidos = conv && conv.unread > 0;
 
                 const li = document.createElement('li');
                 li.classList.add('clickable-user');
                 li.dataset.id = user.id;
-                li.innerHTML = `🟢 <span>${escapeHTML(user.username)}</span>
-                    <span class="unread-dot" style="display:${tieneNoLeidos ? 'inline-block' : 'none'}"></span>`;
+                li.innerHTML = `🟢 <span>${escapeHTML(user.username)}</span><span class="unread-dot" style="display:${tieneNoLeidos ? 'inline-block' : 'none'}"></span>`;
                 li.addEventListener('click', () => abrirChatPrivado(user.id, user.username));
                 usersList.appendChild(li);
+
+                if (conv) {
+                    conv.online = true;
+                    habilitarChatPrivado(user.id, true);
+                }
             });
         });
-
-        // ---- CHAT PRIVADO (dock estilo Messenger, ventanas acopladas a la derecha) ----
 
         const esMobile = () => window.matchMedia('(max-width: 800px)').matches;
 
@@ -261,12 +275,13 @@
                 </div>
                 <ul class="private-messages"></ul>
                 <form class="private-form">
+                    <button type="button" class="private-attach-btn" title="Enviar imagen">📷</button>
+                    <input type="file" class="private-image-input" accept="image/jpeg,image/png,image/gif,image/webp" hidden>
                     <input class="private-input" autocomplete="off" placeholder="Mensaje privado..." />
-                    <button type="submit">Enviar</button>
+                    <button type="submit" class="private-send-btn">Enviar</button>
                 </form>
             `;
 
-            // Click en el header colapsa/expande la ventanita (menos si tocan la X)
             win.querySelector('.private-header').addEventListener('click', (e) => {
                 if (e.target.closest('.close-private-btn')) return;
                 toggleColapsarVentana(id);
@@ -277,18 +292,42 @@
                 cerrarChatPrivado(id);
             });
 
-            win.querySelector('.private-form').addEventListener('submit', (e) => {
+            const privateForm = win.querySelector('.private-form');
+            privateForm.addEventListener('submit', (e) => {
                 e.preventDefault();
                 const inputEl = win.querySelector('.private-input');
                 const texto = inputEl.value.trim();
-                if (!texto) return;
+                const conv = conversaciones.get(id);
+                if (!texto || baneado || (conv && conv.online === false)) return;
 
-                socket.emit('private message', { to: id, from: miNombre, text: texto });
+                socket.emit('private message', { to: id, toUsername: username, text: texto });
                 agregarMensajePrivado(id, `Yo: ${contenidoMensaje(texto)}`, true);
                 inputEl.value = '';
             });
 
-            // En mobile solo mantenemos una ventana abierta a la vez para no saturar la pantalla
+            const attachPrivate = win.querySelector('.private-attach-btn');
+            const filePrivate = win.querySelector('.private-image-input');
+            attachPrivate.addEventListener('click', () => filePrivate.click());
+            filePrivate.addEventListener('change', async () => {
+                const file = filePrivate.files[0];
+                const conv = conversaciones.get(id);
+                if (!file || baneado || (conv && conv.online === false)) return;
+                const original = attachPrivate.textContent;
+                attachPrivate.textContent = '⏳';
+                attachPrivate.disabled = true;
+                try {
+                    const url = await subirImagen(file);
+                    socket.emit('private message', { to: id, toUsername: username, text: url });
+                    agregarMensajePrivado(id, `Yo: ${contenidoMensaje(url)}`, true);
+                } catch (err) {
+                    alert(err.message);
+                } finally {
+                    attachPrivate.textContent = original;
+                    attachPrivate.disabled = false;
+                    filePrivate.value = '';
+                }
+            });
+
             if (esMobile()) {
                 [...conversaciones.keys()].forEach(otroId => {
                     if (otroId !== id) cerrarChatPrivado(otroId);
@@ -300,23 +339,21 @@
         }
 
         function abrirChatPrivado(idDestino, nombreDestino) {
+            if (!idDestino || idDestino === miId) return;
             let conv = conversaciones.get(idDestino);
 
             if (!conv) {
-                conv = { username: nombreDestino, unread: 0, colapsado: false, elemento: null };
+                conv = { username: nombreDestino, unread: 0, colapsado: false, elemento: null, online: true };
                 conv.elemento = crearVentanaPrivada(idDestino, nombreDestino);
                 conversaciones.set(idDestino, conv);
             } else {
-                // Ya existe: la desplegamos si estaba colapsada
                 conv.colapsado = false;
                 conv.elemento.classList.remove('collapsed');
             }
 
-            // Al abrir, se marca como leído
             conv.unread = 0;
             actualizarBadge(idDestino);
             actualizarPuntoNoLeido(idDestino);
-
             conv.elemento.querySelector('.private-input').focus();
         }
 
@@ -352,35 +389,72 @@
             }
         }
 
+        function habilitarChatPrivado(id, habilitado) {
+            const conv = conversaciones.get(id);
+            if (!conv) return;
+            conv.online = habilitado;
+            const inputEl = conv.elemento.querySelector('.private-input');
+            const sendBtn = conv.elemento.querySelector('.private-send-btn');
+            const attachBtnPriv = conv.elemento.querySelector('.private-attach-btn');
+            inputEl.disabled = !habilitado;
+            sendBtn.disabled = !habilitado;
+            attachBtnPriv.disabled = !habilitado;
+            inputEl.placeholder = habilitado ? 'Mensaje privado...' : 'Usuario desconectado';
+        }
+
         socket.on('private message', (data) => {
             let conv = conversaciones.get(data.fromId);
 
-            // Si no existe la ventana, la creamos ya colapsada (no interrumpe lo que estás escribiendo)
             if (!conv) {
                 const elemento = crearVentanaPrivada(data.fromId, data.from);
                 elemento.classList.add('collapsed');
-                conv = { username: data.from, unread: 0, colapsado: true, elemento };
+                conv = { username: data.from, unread: 0, colapsado: true, elemento, online: true };
                 conversaciones.set(data.fromId, conv);
             }
 
             agregarMensajePrivado(data.fromId, `<strong>${escapeHTML(data.from)}:</strong> ${contenidoMensaje(data.text)}`, false);
 
-            // Si la ventana está colapsada, sumamos al contador de no leídos
             if (conv.colapsado) {
                 conv.unread++;
                 actualizarBadge(data.fromId);
                 actualizarPuntoNoLeido(data.fromId);
             }
-
             reproducirSonidoNotificacion();
         });
 
-        function agregarMensajePrivado(id, html, esMio) {
+        socket.on('private unavailable', (data) => {
+            const conv = conversaciones.get(data.to);
+            if (conv) {
+                agregarMensajePrivado(data.to, `<em>⚠️ ${escapeHTML(conv.username)} ya no está en la sala.</em>`, false, true);
+                habilitarChatPrivado(data.to, false);
+            }
+        });
+
+        // Cuando alguien abandona, avisa también dentro del chat privado que estuviera abierto.
+        socket.on('user left', (data) => {
+            const conv = conversaciones.get(data.id);
+            if (!conv) return;
+            agregarMensajePrivado(data.id, `<em>⬅️ ${escapeHTML(data.username)} ha abandonado la sala.</em>`, false, true);
+            habilitarChatPrivado(data.id, false);
+        });
+
+        socket.on('banned', (data) => {
+            baneado = true;
+            const minutos = data.minutes ? ` por ${data.minutes} minutos` : '';
+            alert(`Fuiste expulsado del chat${minutos}. ${data.reason || ''}`);
+            input.disabled = true;
+            attachBtn.style.pointerEvents = 'none';
+            document.querySelector('#form button[type="submit"]').disabled = true;
+            conversaciones.forEach((conv, id) => habilitarChatPrivado(id, false));
+        });
+
+        function agregarMensajePrivado(id, html, esMio, esSistema = false) {
             const conv = conversaciones.get(id);
             if (!conv) return;
             const li = document.createElement('li');
             li.innerHTML = html;
-            if (esMio) li.style.background = "var(--accent)";
+            if (esMio) li.classList.add('private-own-message');
+            if (esSistema) li.classList.add('private-system-message');
             const lista = conv.elemento.querySelector('.private-messages');
             lista.appendChild(li);
             lista.scrollTop = lista.scrollHeight;

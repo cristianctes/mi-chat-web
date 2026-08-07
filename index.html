@@ -21,8 +21,10 @@
 
     <!-- PANTALLA DEL CHAT -->
     <div class="chat-container" id="chat-container" style="display: none;">
+        <!-- Encabezado dinámico con botón para volver al chat público -->
         <div class="chat-header">
             <span id="current-room-title">Sala</span>
+            <button id="back-to-public-btn" style="display: none;">Volver al Chat Público</button>
         </div>
         
         <div class="chat-main-area">
@@ -35,33 +37,27 @@
                 </div>
             </div>
 
-            <!-- CHAT PÚBLICO -->
+            <!-- ÁREA DE MENSAJES CENTRAL -->
             <div class="chat-messages-area">
+                <!-- Contenedor del Chat Público -->
                 <ul id="messages"></ul>
+
+                <!-- Contenedor del Chat Privado (Oculto al inicio) -->
+                <ul id="private-messages" style="display: none;"></ul>
+
+                <!-- Formulario Único de Envío -->
                 <form id="form" action="">
-                    <input id="input" autocomplete="off" placeholder="Escribe un mensaje..." /><button>Enviar</button>
+                    <input id="input" autocomplete="off" placeholder="Escribe un mensaje..." />
+                    <button id="send-btn">Enviar</button>
                 </form>
             </div>
             
-            <!-- USUARIOS -->
+            <!-- BARRA LATERAL: USUARIOS -->
             <div class="users-sidebar">
                 <h3>Conectados</h3>
                 <ul id="users-list"></ul>
             </div>
         </div>
-    </div>
-
-    <!-- VENTANA DE CHAT PRIVADO (Flotante) -->
-    <div id="private-chat-modal" style="display: none;">
-        <div class="private-header">
-            <span id="private-target-name">Chat Privado</span>
-            <button id="close-private-btn">❌</button>
-        </div>
-        <ul id="private-messages"></ul>
-        <form id="private-form">
-            <input id="private-input" autocomplete="off" placeholder="Escribe un privado..." />
-            <button>Enviar</button>
-        </form>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
@@ -74,23 +70,19 @@
         const roomSelect = document.getElementById('room');
         const joinBtn = document.getElementById('join-btn');
         const currentRoomTitle = document.getElementById('current-room-title');
+        const backToPublicBtn = document.getElementById('back-to-public-btn');
         
         const form = document.getElementById('form');
         const input = document.getElementById('input');
         const messages = document.getElementById('messages');
-        const usersList = document.getElementById('users-list');
-
-        // Elementos Privados
-        const privateModal = document.getElementById('private-chat-modal');
-        const privateTargetName = document.getElementById('private-target-name');
-        const closePrivateBtn = document.getElementById('close-private-btn');
-        const privateForm = document.getElementById('private-form');
-        const privateInput = document.getElementById('private-input');
         const privateMessages = document.getElementById('private-messages');
+        const usersList = document.getElementById('users-list');
 
         let miNombre = "";
         let miSala = "";
-        let targetSocketId = ""; // ID de la persona con la que hablo en privado
+        let targetSocketId = ""; // ID del usuario privado actual
+        let targetUsername = ""; // Nombre del usuario privado actual
+        let modoChat = "publico"; // Puede ser "publico" o "privado"
 
         joinBtn.addEventListener('click', () => {
             miNombre = usernameInput.value.trim();
@@ -102,14 +94,28 @@
             socket.emit('join room', { username: miNombre, room: miSala });
         });
 
+        // MANEJO DEL ENVÍO DE MENSAJES (Detecta si es público o privado)
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (input.value) {
+            if (!input.value) return;
+
+            if (modoChat === "publico") {
                 socket.emit('chat message', { text: input.value, username: miNombre, room: miSala });
-                input.value = '';
+            } else if (modoChat === "privado" && targetSocketId) {
+                const texto = input.value;
+                socket.emit('private message', { to: targetSocketId, text: texto, from: miNombre });
+                
+                // Agregarlo visualmente a mi pantalla de chat privado
+                const item = document.createElement('li');
+                item.className = "my-private-msg";
+                item.innerHTML = `<strong>Yo (Privado):</strong> ${texto}`;
+                privateMessages.appendChild(item);
+                privateMessages.scrollTop = privateMessages.scrollHeight;
             }
+            input.value = '';
         });
 
+        // RECIBIR MENSAJES PÚBLICOS
         socket.on('chat message', (data) => {
             const item = document.createElement('li');
             if (data.username === "Sistema") {
@@ -120,63 +126,94 @@
                 item.innerHTML = `<strong>${data.username}:</strong> ${data.text}`;
             }
             messages.appendChild(item);
-            messages.scrollTop = messages.scrollHeight;
+            if (modoChat === "publico") messages.scrollTop = messages.scrollHeight;
         });
 
-        // RECIBIR LISTA CON IDs PARA HACER CLIC
+        // RECIBIR LA LISTA DE USUARIOS
         socket.on('room users', (users) => {
             usersList.innerHTML = '';
             users.forEach(user => {
-                // No permitir hacer clic en uno mismo
                 if (user.username === miNombre) return;
 
                 const li = document.createElement('li');
+                li.setAttribute('data-id', user.id);
                 li.innerHTML = `🟢 <span class="clickable-user">${user.username}</span>`;
-                li.style.cursor = "pointer";
                 
-                // Al hacer clic, abrimos la ventana privada
+                // Si ya estábamos hablando con él, mantenemos el color de activo
+                if (user.id === targetSocketId) {
+                    li.classList.add('active-private-user');
+                }
+
+                // Evento al hacer clic en un usuario para hablar en privado
                 li.addEventListener('click', () => {
+                    // Remover color activo de cualquier otro usuario previo
+                    document.querySelectorAll('#users-list li').forEach(el => el.classList.remove('active-private-user'));
+                    
+                    // Asignar datos del nuevo objetivo privado
                     targetSocketId = user.id;
-                    privateTargetName.textContent = `Privado con: ${user.username}`;
-                    privateMessages.innerHTML = ""; // Limpiar historial viejo
-                    privateModal.style.display = "flex";
+                    targetUsername = user.username;
+                    li.classList.add('active-private-user');
+
+                    // Cambiar la vista de la columna central
+                    modoChat = "privado";
+                    currentRoomTitle.textContent = `Conversación Privada con: ${targetUsername}`;
+                    backToPublicBtn.style.display = "inline-block";
+                    messages.style.display = "none";
+                    privateMessages.style.display = "block";
+                    input.placeholder = `Escribe un mensaje privado a ${targetUsername}...`;
+                    privateMessages.innerHTML = ""; // Limpiar pantalla para iniciar conversación limpia
                 });
+
                 usersList.appendChild(li);
             });
         });
 
-        // ENVIAR MENSAJE PRIVADO
-        privateForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            if (privateInput.value && targetSocketId) {
-                const texto = privateInput.value;
-                // Enviar al servidor especificando a quién va dirigido
-                socket.emit('private message', { to: targetSocketId, text: texto, from: miNombre });
-                
-                // Dibujarlo en mi propia ventana
-                const item = document.createElement('li');
-                item.innerHTML = `<strong>Yo:</strong> ${texto}`;
-                privateMessages.appendChild(item);
-                privateInput.value = '';
-                privateMessages.scrollTop = privateMessages.scrollHeight;
-            }
-        });
-
-        // RECIBIR MENSAJE PRIVADO DE ALGUIEN
+        // RECIBIR MENSAJE PRIVADO ENTRANTE
         socket.on('private message', (data) => {
-            // Guardamos el ID de quien nos habla por si queremos responderle
-            targetSocketId = data.fromId;
-            privateTargetName.textContent = `Privado con: ${data.from}`;
-            privateModal.style.display = "flex";
+            // Si no estamos en modo privado con esa persona, lo cambiamos automáticamente
+            if (targetSocketId !== data.fromId) {
+                targetSocketId = data.fromId;
+                targetUsername = data.from;
+                
+                // Resaltar visualmente en la lista de la derecha
+                document.querySelectorAll('#users-list li').forEach(el => {
+                    if (el.getAttribute('data-id') === data.fromId) {
+                        el.classList.add('active-private-user');
+                    } else {
+                        el.classList.remove('active-private-user');
+                    }
+                });
 
+                modoChat = "privado";
+                currentRoomTitle.textContent = `Conversación Privada con: ${targetUsername}`;
+                backToPublicBtn.style.display = "inline-block";
+                messages.style.display = "none";
+                privateMessages.style.display = "block";
+                input.placeholder = `Escribe un mensaje privado a ${targetUsername}...`;
+                privateMessages.innerHTML = "";
+            }
+
+            // Dibujar el mensaje recibido
             const item = document.createElement('li');
-            item.innerHTML = `<strong>${data.from}:</strong> ${data.text}`;
+            item.className = "incoming-private-msg";
+            item.innerHTML = `<strong>${data.from} (Privado):</strong> ${data.text}`;
             privateMessages.appendChild(item);
             privateMessages.scrollTop = privateMessages.scrollHeight;
         });
 
-        closePrivateBtn.addEventListener('click', () => {
-            privateModal.style.display = "none";
+        // BOTÓN PARA VOLVER AL CHAT DE LA SALA PÚBLICA
+        backToPublicBtn.addEventListener('click', () => {
+            document.querySelectorAll('#users-list li').forEach(el => el.classList.remove('active-private-user'));
+            modoChat = "publico";
+            targetSocketId = "";
+            targetUsername = "";
+            
+            currentRoomTitle.textContent = `Sala: ${miSala}`;
+            backToPublicBtn.style.display = "none";
+            privateMessages.style.display = "none";
+            messages.style.display = "block";
+            input.placeholder = "Escribe un mensaje...";
+            messages.scrollTop = messages.scrollHeight;
         });
     </script>
 </body>

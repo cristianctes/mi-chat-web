@@ -11,7 +11,7 @@
     <div id="login-container">
         <h2>Ingresar al Chat</h2>
         <input type="text" id="username" placeholder="Tu Apodo / Nickname" autocomplete="off">
-        <select id="room-select-login">
+        <select id="room">
             <option value="Chaco-Corrientes">Chaco-Corrientes</option>
             <option value="Buenos Aires">Buenos Aires</option>
             <option value="Sala General">Sala General</option>
@@ -21,50 +21,21 @@
 
     <!-- PANTALLA DEL CHAT -->
     <div class="chat-container" id="chat-container" style="display: none;">
-        
-        <!-- BARRA SUPERIOR CON SELECTOR DE SALAS -->
-        <div class="chat-navbar">
-            <div class="nav-left">
-                <span id="current-room-title">Sala</span>
-                <select id="change-room-select">
-                    <option value="Chaco-Corrientes">Cambiar a: Chaco-Corrientes</option>
-                    <option value="Buenos Aires">Cambiar a: Buenos Aires</option>
-                    <option value="Sala General">Cambiar a: Sala General</option>
-                </select>
-            </div>
-            <div class="nav-right">
-                <button id="back-to-public-btn" style="display: none;">Volver al General</button>
-                <button id="toggle-users-btn">☰ Conectados</button>
-            </div>
+        <div class="chat-header">
+            <span id="current-room-title">Sala</span>
         </div>
         
+        <!-- Contenedor principal que divide el chat de la barra lateral -->
         <div class="chat-main-area">
-            <!-- PUBLICIDAD -->
-            <div class="ads-sidebar">
-                <span class="ad-label">PUBLICIDAD</span>
-                <div class="ad-box">
-                    <p>¡Tu Anuncio Aquí!</p>
-                    <small>tu-email@chat.com</small>
-                </div>
-            </div>
-
-            <!-- ÁREA DE MENSAJES CENTRAL -->
             <div class="chat-messages-area">
                 <ul id="messages"></ul>
-                <ul id="private-messages" style="display: none;"></ul>
-
-                <!-- FORMULARIO DE ENVÍO CON CARGA DE ARCHIVOS -->
                 <form id="form" action="">
-                    <label for="file-input" class="file-label">📷</label>
-                    <input type="file" id="file-input" accept="image/*" style="display: none;" />
-                    
-                    <input id="input" autocomplete="off" placeholder="Escribe un mensaje..." />
-                    <button id="send-btn">Enviar</button>
+                    <input id="input" autocomplete="off" placeholder="Escribe un mensaje..." /><button>Enviar</button>
                 </form>
             </div>
             
-            <!-- BARRA LATERAL: USUARIOS -->
-            <div class="users-sidebar" id="users-sidebar">
+            <!-- BARRA LATERAL DE USUARIOS -->
+            <div class="users-sidebar">
                 <h3>Conectados</h3>
                 <ul id="users-list"></ul>
             </div>
@@ -78,153 +49,68 @@
         const loginContainer = document.getElementById('login-container');
         const chatContainer = document.getElementById('chat-container');
         const usernameInput = document.getElementById('username');
-        const roomSelectLogin = document.getElementById('room-select-login');
-        const changeRoomSelect = document.getElementById('change-room-select');
+        const roomSelect = document.getElementById('room');
         const joinBtn = document.getElementById('join-btn');
         const currentRoomTitle = document.getElementById('current-room-title');
-        const backToPublicBtn = document.getElementById('back-to-public-btn');
-        const toggleUsersBtn = document.getElementById('toggle-users-btn');
-        const usersSidebar = document.getElementById('users-sidebar');
         
         const form = document.getElementById('form');
         const input = document.getElementById('input');
-        const fileInput = document.getElementById('file-input');
         const messages = document.getElementById('messages');
-        const privateMessages = document.getElementById('private-messages');
         const usersList = document.getElementById('users-list');
 
         let miNombre = "";
         let miSala = "";
-        let targetSocketId = "";
-        let targetUsername = "";
-        let modoChat = "publico";
-
-        // API KEY DE IMGBB ASIGNADA CORRECTAMENTE
-        const IMGBB_API_KEY = "4ccae6cd77f470c93290ba44d67d571f"; 
 
         joinBtn.addEventListener('click', () => {
             miNombre = usernameInput.value.trim();
-            miSala = roomSelectLogin.value;
-            if (miNombre === "") return alert("Ingresa un nombre.");
-            
-            loginContainer.style.display = "none";
-            chatContainer.style.display = "flex";
-            currentRoomTitle.textContent = miSala;
-            changeRoomSelect.value = miSala;
+            miSala = roomSelect.value;
 
-            socket.emit('join room', { username: miNombre, room: miSala });
-        });
-
-        changeRoomSelect.addEventListener('change', () => {
-            const nuevaSala = changeRoomSelect.value;
-            if (nuevaSala === miSala) return;
-            
-            irAlGeneral();
-            miSala = nuevaSala;
-            currentRoomTitle.textContent = miSala;
-            messages.innerHTML = "";
-
-            socket.emit('join room', { username: miNombre, room: miSala });
-        });
-
-        fileInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            input.placeholder = "Subiendo imagen y generando link...";
-            input.disabled = true;
-
-            const formData = new FormData();
-            formData.append("image", file);
-
-            try {
-                const response = await fetch(`https://imgbb.com{IMGBB_API_KEY}`, {
-                    method: "POST",
-                    body: formData
-                });
-                const resultado = await response.json();
-                
-                if (resultado.success) {
-                    const linkDeLaFoto = resultado.data.url;
-                    
-                    if (modoChat === "publico") {
-                        socket.emit('chat message', { text: linkDeLaFoto, username: miNombre, room: miSala });
-                    } else {
-                        socket.emit('private message', { to: targetSocketId, text: linkDeLaFoto, from: miNombre });
-                        const item = document.createElement('li');
-                        item.innerHTML = `<strong>Yo (Privado):</strong> <a href="${linkDeLaFoto}" target="_blank" class="chat-link">📷 Ver Foto Compartida</a>`;
-                        privateMessages.appendChild(item);
-                        privateMessages.scrollTop = privateMessages.scrollHeight;
-                    }
-                } else {
-                    alert("Error al procesar la imagen.");
-                }
-            } catch (err) {
-                alert("Error de conexión al subir el archivo.");
+            if (miNombre === "") {
+                alert("Por favor, ingresá un nombre.");
+                return;
             }
 
-            input.placeholder = modoChat === "publico" ? "Escribe un mensaje..." : `Escribe a ${targetUsername}...`;
-            input.disabled = false;
-            fileInput.value = "";
+            loginContainer.style.display = "none";
+            chatContainer.style.display = "flex";
+            currentRoomTitle.textContent = `Sala: ${miSala}`;
+
+            socket.emit('join room', { username: miNombre, room: miSala });
         });
 
         form.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (!input.value) return;
-
-            if (modoChat === "publico") {
-                socket.emit('chat message', { text: input.value, username: miNombre, room: miSala });
-            } else if (modoChat === "privado" && targetSocketId) {
-                const texto = input.value;
-                socket.emit('private message', { to: targetSocketId, text: texto, from: miNombre });
-                
-                const item = document.createElement('li');
-                item.innerHTML = `<strong>Yo (Privado):</strong> ${texto}`;
-                privateMessages.appendChild(item);
-                privateMessages.scrollTop = privateMessages.scrollHeight;
+            if (input.value) {
+                socket.emit('chat message', {
+                    text: input.value,
+                    username: miNombre,
+                    room: miSala
+                });
+                input.value = '';
             }
-            input.value = '';
         });
-
-        function formatearMensaje(texto) {
-            if (texto.startsWith("http://") || texto.startsWith("https://")) {
-                return `<a href="${texto}" target="_blank" class="chat-link">🔗 ${texto}</a>`;
-            }
-            return texto;
-        }
 
         socket.on('chat message', (data) => {
             const item = document.createElement('li');
             if (data.username === "Sistema") {
                 item.innerHTML = `<em>${data.text}</em>`;
-                item.style.backgroundColor = "#2a2b36";
-                item.style.color = "#a0a5b5";
+                item.style.backgroundColor = "#e4e4e4";
+                item.style.color = "#555";
             } else {
-                item.innerHTML = `<strong>${data.username}:</strong> ${formatearMensaje(data.text)}`;
+                item.innerHTML = `<strong>${data.username}:</strong> ${data.text}`;
             }
             messages.appendChild(item);
-            if (modoChat === "publico") messages.scrollTop = messages.scrollHeight;
+            messages.scrollTop = messages.scrollHeight;
         });
 
+        // ESCUCHAR LA LISTA ACTUALIZADA DE USUARIOS EN LA SALA
         socket.on('room users', (users) => {
-            usersList.innerHTML = '';
+            usersList.innerHTML = ''; // Limpiar la lista anterior
             users.forEach(user => {
-                if (user.username === miNombre) return;
-
                 const li = document.createElement('li');
-                li.setAttribute('data-id', user.id);
-                li.innerHTML = `🟢 <span class="clickable-user">${user.username}</span>`;
-                
-                if (user.id === targetSocketId) li.classList.add('active-private-user');
-
-                li.addEventListener('click', () => {
-                    document.querySelectorAll('#users-list li').forEach(el => el.classList.remove('active-private-user'));
-                    targetSocketId = user.id;
-                    targetUsername = user.username;
-                    li.classList.add('active-private-user');
-
-                    modoChat = "privado";
-                    currentRoomTitle.textContent = `Privado: ${targetUsername}`;
-                    changeRoomSelect.style.display = "none";
-                    backToPublicBtn.style.display = "inline-block";
-                    messages.style.display = "none";
+                li.textContent = `🟢 ${user}`;
+                usersList.appendChild(li);
+            });
+        });
+    </script>
+</body>
+</html>

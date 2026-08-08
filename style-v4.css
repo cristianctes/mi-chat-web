@@ -1,0 +1,15 @@
+/* Ajustes visuales de escritorio. Las reglas móviles anteriores se conservan. */
+main{min-height:0;overflow:hidden}
+.messages{min-height:0}
+#composer{height:68px;min-height:68px;align-items:center;padding:10px 16px;background:#fbfcfd}
+#composer>input{height:44px;background:#fff;font-size:16px}
+.camera{width:44px;height:44px;justify-self:center;background:#fff}
+.send{width:44px;height:44px;border-radius:50%;background:#1769aa;color:#fff;font-size:22px;line-height:1}
+.channelLabel{display:block;margin:8px 4px 7px;font-size:12px;font-weight:bold;color:#657382;letter-spacing:.04em}
+.channelSelect{width:100%;padding:11px 32px 11px 11px;border:1px solid #cfd8e1;border-radius:9px;background:#fff;color:#1c3347;font-weight:bold;cursor:pointer}
+.publicRoom{width:100%;margin-top:8px;padding:10px;border:0;border-radius:8px;background:#eaf2f8;color:#1769aa;text-align:left;font-weight:bold;cursor:pointer}
+.publicRoom:hover{background:#dcebf5}
+.imageLink{display:block;margin-top:7px;color:#066ac9;text-decoration:underline}
+header{box-shadow:0 1px 5px #14283a12;z-index:1}
+.bubble{border:1px solid #e5e9ed;box-shadow:0 2px 5px #0000000d}
+@media(max-width:760px){#composer{height:auto;min-height:0;padding:9px 10px}.camera{width:auto;height:auto}.send{background:transparent;color:#263848;width:auto;height:auto}.channelSelect,.channelLabel,.publicRoom{display:none}}

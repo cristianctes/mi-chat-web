@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const { renderHome, renderRoom, rooms } = require('./seo-pages');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,6 +14,12 @@ const banMs = (Number(process.env.BAN_MINUTOS) || 60) * 60000;
 const bans = new Map();
 const users = new Map();
 
+const siteUrl = (process.env.SITE_URL || 'https://mi-chat-web-comunidad.onrender.com').replace(/\/$/,'');
+app.get('/', (_req,res) => res.type('html').send(renderHome(siteUrl)));
+app.get('/chat', (_req,res) => res.sendFile(path.join(__dirname,'index.html')));
+app.get('/salas/:slug', (req,res) => { const room=rooms.find(r=>r.slug===req.params.slug); if(!room)return res.status(404).type('html').send('<h1>Página no encontrada</h1><a href="/">Volver al inicio</a>'); res.type('html').send(renderRoom(siteUrl,room)); });
+app.get('/robots.txt', (_req,res) => res.type('text').send(`User-agent: *\nAllow: /\nDisallow: /chat\nSitemap: ${siteUrl}/sitemap.xml\n`));
+app.get('/sitemap.xml', (_req,res) => { const urls=['',...rooms.map(r=>`/salas/${r.slug}`)]; res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${urls.map((u,i)=>`<url><loc>${siteUrl}${u||'/'}</loc><changefreq>${i?'weekly':'daily'}</changefreq><priority>${i?'0.8':'1.0'}</priority></url>`).join('')}</urlset>`); });
 app.use(express.static(__dirname));
 app.get('/health', (_req,res) => res.json({ok:true}));
 

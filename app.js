@@ -6,6 +6,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const key=()=>current.type==='channel'?`c:${current.id}`:`p:${current.id}`;
 function fillChannels(){['#initialChannel','#mobileChannel','#desktopChannel'].forEach(sel=>$(sel).innerHTML=CHANNELS.map(c=>`<option value="${c}"># ${c}</option>`).join(''));}
 fillChannels();
+const requestedChannel=new URLSearchParams(location.search).get('canal');if(CHANNELS.includes(requestedChannel))$('#initialChannel').value=requestedChannel;
 $('#loginForm').onsubmit=e=>{e.preventDefault();audioContext=new (window.AudioContext||window.webkitAudioContext)();audioContext.resume();credentials={nick:$('#nick').value,channel:$('#initialChannel').value,color:'#'+Math.floor(Math.random()*0x999999+0x333333).toString(16).slice(0,6)};socket.connect();};
 socket.on('connect',()=>{if(credentials){credentials.channel=current.id;socket.emit('join',credentials)}});
 socket.on('joined',d=>{me=d;current={type:'channel',id:d.channel};$('#login').classList.add('hidden');$('#app').classList.remove('hidden');renderAll();});
